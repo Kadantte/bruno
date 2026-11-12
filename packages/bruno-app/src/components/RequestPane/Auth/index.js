@@ -1,67 +1,49 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import get from 'lodash/get';
+import { updateAuth } from 'providers/ReduxStore/slices/collections';
 import AuthMode from './AuthMode';
-import AwsV4Auth from './AwsV4Auth';
-import BearerAuth from './BearerAuth';
-import BasicAuth from './BasicAuth';
-import DigestAuth from './DigestAuth';
-import StyledWrapper from './StyledWrapper';
-import { humanizeRequestAuthMode } from 'utils/collections/index';
-import OAuth2 from './OAuth2/index';
+import { getEffectiveAuthSource } from 'utils/auth';
+import AuthFields from './AuthFields';
+import InheritedAuth, { InheritedAuthSourceLabel } from './InheritedAuth';
 
 const Auth = ({ item, collection }) => {
   const authMode = item.draft ? get(item, 'draft.request.auth.mode') : get(item, 'request.auth.mode');
 
-  const collectionRoot = get(collection, 'root', {});
-  const collectionAuth = get(collectionRoot, 'request.auth');
+  const request = item.draft
+    ? get(item, 'draft.request', {})
+    : get(item, 'request', {});
+
+  const inheritedSource = useMemo(
+    () => (authMode === 'inherit' ? getEffectiveAuthSource(collection, item) : null),
+    [authMode, item, collection]
+  );
 
   const getAuthView = () => {
-    switch (authMode) {
-      case 'awsv4': {
-        return <AwsV4Auth collection={collection} item={item} />;
-      }
-      case 'basic': {
-        return <BasicAuth collection={collection} item={item} />;
-      }
-      case 'bearer': {
-        return <BearerAuth collection={collection} item={item} />;
-      }
-      case 'digest': {
-        return <DigestAuth collection={collection} item={item} />;
-      }
-      case 'oauth2': {
-        return <OAuth2 collection={collection} item={item} />;
-      }
-      case 'inherit': {
-        return (
-          <div className="flex flex-row w-full mt-2 gap-2">
-            {collectionAuth?.mode === 'oauth2' ? (
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-row gap-1">
-                  <div>Collection level auth is: </div>
-                  <div className="inherit-mode-text">{humanizeRequestAuthMode(collectionAuth?.mode)}</div>
-                </div>
-                <div className="text-sm opacity-50">Cannot inherit Oauth2 from collection.</div>
-              </div>
-            ) : (
-              <>
-                <div>Auth inherited from the Collection: </div>
-                <div className="inherit-mode-text">{humanizeRequestAuthMode(collectionAuth?.mode)}</div>
-              </>
-            )}
-          </div>
-        );
-      }
+    if (authMode === 'inherit') {
+      return <InheritedAuth collection={collection} item={item} inheritedSource={inheritedSource} />;
     }
+
+    return (
+      <AuthFields
+        authMode={authMode}
+        collection={collection}
+        item={item}
+        request={request}
+        updateAuth={updateAuth}
+      />
+    );
   };
 
   return (
-    <StyledWrapper className="w-full mt-1">
-      <div className="flex flex-grow justify-start items-center">
+    <div className="w-full overflow-auto">
+      <div className="flex flex-col items-start gap-2 mb-4 min-w-0">
         <AuthMode item={item} collection={collection} />
+        {authMode === 'inherit' && inheritedSource ? (
+          <InheritedAuthSourceLabel collection={collection} inheritedSource={inheritedSource} />
+        ) : null}
       </div>
       {getAuthView()}
-    </StyledWrapper>
+    </div>
   );
 };
 

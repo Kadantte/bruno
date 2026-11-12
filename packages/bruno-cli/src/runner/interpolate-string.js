@@ -1,13 +1,21 @@
 const { forOwn, cloneDeep } = require('lodash');
-const { interpolate } = require('@usebruno/common');
+const { interpolate, interpolateObject: interpolateObjectCommon } = require('@usebruno/common');
 
-const interpolateString = (str, { envVars, collectionVariables, processEnvVars }) => {
-  if (!str || !str.length || typeof str !== 'string') {
-    return str;
-  }
-
+const buildCombinedVars = ({
+  collectionVariables,
+  envVars,
+  folderVariables,
+  requestVariables,
+  runtimeVariables,
+  processEnvVars,
+  globalEnvVars
+}) => {
   processEnvVars = processEnvVars || {};
+  runtimeVariables = runtimeVariables || {};
   collectionVariables = collectionVariables || {};
+  folderVariables = folderVariables || {};
+  requestVariables = requestVariables || {};
+  globalEnvVars = globalEnvVars || {};
 
   // we clone envVars because we don't want to modify the original object
   envVars = envVars ? cloneDeep(envVars) : {};
@@ -24,20 +32,40 @@ const interpolateString = (str, { envVars, collectionVariables, processEnvVars }
     });
   });
 
-  // collectionVariables take precedence over envVars
-  const combinedVars = {
-    ...envVars,
+  // runtimeVariables take precedence over envVars
+  return {
+    ...globalEnvVars,
     ...collectionVariables,
+    ...envVars,
+    ...folderVariables,
+    ...requestVariables,
+    ...runtimeVariables,
     process: {
       env: {
         ...processEnvVars
       }
     }
   };
+};
 
+const interpolateString = (str, interpolationOptions) => {
+  if (!str || !str.length || typeof str !== 'string') {
+    return str;
+  }
+
+  const combinedVars = buildCombinedVars(interpolationOptions);
   return interpolate(str, combinedVars);
 };
 
+/**
+ * recursively interpolating all string values in a object
+ */
+const interpolateObject = (obj, interpolationOptions) => {
+  const combinedVars = buildCombinedVars(interpolationOptions);
+  return interpolateObjectCommon(obj, combinedVars);
+};
+
 module.exports = {
-  interpolateString
+  interpolateString,
+  interpolateObject
 };

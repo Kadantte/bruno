@@ -2,19 +2,70 @@ const _ = require('lodash');
 const chai = require('chai');
 const { nanoid } = require('nanoid');
 const Bru = require('../bru');
+const { getUnresolvedVariableCollector } = require('../unresolved-variables');
 const BrunoRequest = require('../bruno-request');
 const { evaluateJsTemplateLiteral, evaluateJsExpression, createResponseParser } = require('../utils');
 const { interpolateString } = require('../interpolate-string');
+const { executeQuickJsVm } = require('../sandbox/quickjs');
 
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const { expect } = chai;
 chai.use(require('chai-string'));
 chai.use(function (chai, utils) {
   // Custom assertion for checking if a variable is JSON
   chai.Assertion.addProperty('json', function () {
     const obj = this._obj;
-    const isJson = typeof obj === 'object' && obj !== null && !Array.isArray(obj) && obj.constructor === Object;
+    // Use Object.prototype.toString instead of constructor check for cross-realm compatibility.
+    // Objects created inside Node's vm.createContext() have a different Object constructor,
+    // so obj.constructor === Object fails for objects passed via res.setBody() from scripts.
+    // Note: toString check is more permissive than constructor check — custom class instances
+    const isJson = typeof obj === 'object' && obj !== null
+      && (Array.isArray(obj) || Object.prototype.toString.call(obj) === '[object Object]');
 
     this.assert(isJson, `expected ${utils.inspect(obj)} to be JSON`, `expected ${utils.inspect(obj)} not to be JSON`);
+  });
+});
+
+// Custom assertion for JSON Schema validation
+const defaultAjv = new Ajv({ allErrors: true });
+addFormats(defaultAjv);
+
+const SUPPORTED_SCHEMA_VERSIONS = [
+  'http://json-schema.org/draft-07/schema#',
+  'http://json-schema.org/draft-07/schema'
+];
+
+chai.use(function (chai) {
+  chai.Assertion.addMethod('jsonSchema', function (schema, ajvOptions) {
+    if (schema && schema.$schema && !SUPPORTED_SCHEMA_VERSIONS.includes(schema.$schema)) {
+      this.assert(
+        false,
+        `Unsupported JSON Schema version: "${schema.$schema}". Bruno currently only supports Draft-07 (http://json-schema.org/draft-07/schema#). Please update your schema to be Draft-07 compatible and remove the $schema property.`,
+        `Unsupported JSON Schema version: "${schema.$schema}".`
+      );
+    }
+    let ajv;
+    if (ajvOptions) {
+      ajv = new Ajv({ allErrors: true, ...ajvOptions });
+      addFormats(ajv);
+    } else {
+      ajv = defaultAjv;
+    }
+    let validate;
+    try {
+      validate = ajv.compile(schema);
+    } catch (e) {
+      this.assert(false, 'JSON schema compile error: ' + e.message, 'JSON schema compile error: ' + e.message);
+    }
+    const data = this._obj;
+    const isValid = validate(data);
+
+    this.assert(
+      isValid,
+      'expected #{this} to match JSON schema, validation errors: ' + (validate.errors ? JSON.stringify(validate.errors) : 'none'),
+      'expected #{this} to not match JSON schema'
+    );
   });
 });
 
@@ -34,6 +85,118 @@ chai.use(function (chai, utils) {
       `expected ${utils.inspect(obj)} to match ${regex}`,
       `expected ${utils.inspect(obj)} not to match ${regex}`
     );
+  });
+});
+
+// Custom assertion for jsonBody (Postman parity)
+chai.use(function (chai, utils) {
+  // Parse a property path into an array of keys.
+  // Handles: dot notation (a.b), numeric brackets (a[0]), quoted brackets (a["b.c"], a['key']),
+  // and combinations like data[0]["a.b"].name
+  //
+  // Examples:
+  //   "a.b.c"              -> ["a", "b", "c"]
+  //   "items[0].name"      -> ["items", "0", "name"]
+  //   'data["a.b"]'        -> ["data", "a.b"]
+  //   "matrix[0][1]"       -> ["matrix", "0", "1"]
+  //   'nested["x.y"].z'    -> ["nested", "x.y", "z"]
+  //   '["say \\"hi\\""]'   -> ["say \"hi\""]
+  function parsePath(path) {
+    const keys = [];
+    let i = 0;
+    while (i < path.length) {
+      if (path[i] === '.') {
+        // Skip dot separator
+        i++;
+      } else if (path[i] === '[') {
+        i++; // skip '['
+        if (i < path.length && (path[i] === '\'' || path[i] === '"')) {
+          // Quoted key — collect until matching unescaped quote + ']'
+          const quote = path[i];
+          i++; // skip opening quote
+          let key = '';
+          while (i < path.length && path[i] !== quote) {
+            if (path[i] === '\\' && i + 1 < path.length && path[i + 1] === quote) {
+              key += quote;
+              i += 2; // skip backslash + escaped quote
+            } else {
+              key += path[i];
+              i++;
+            }
+          }
+          i++; // skip closing quote
+          i++; // skip ']'
+          keys.push(key);
+        } else {
+          // Unquoted (numeric) key — collect until ']'
+          let key = '';
+          while (i < path.length && path[i] !== ']') {
+            key += path[i];
+            i++;
+          }
+          i++; // skip ']'
+          keys.push(key);
+        }
+      } else {
+        // Bare key — collect until '.', '[', or end
+        let key = '';
+        while (i < path.length && path[i] !== '.' && path[i] !== '[') {
+          key += path[i];
+          i++;
+        }
+        keys.push(key);
+      }
+    }
+    return keys;
+  }
+
+  function getNestedValue(obj, path) {
+    const keys = parsePath(path);
+    let current = obj;
+    for (const key of keys) {
+      if (current === null || current === undefined || !Object.prototype.hasOwnProperty.call(Object(current), key)) {
+        return { found: false };
+      }
+      current = current[key];
+    }
+    return { found: true, value: current };
+  }
+
+  chai.Assertion.addMethod('jsonBody', function () {
+    const obj = this._obj;
+    const args = Array.prototype.slice.call(arguments);
+
+    if (args.length === 0) {
+      // No args: check body is valid JSON (object or array)
+      this.assert(
+        typeof obj === 'object' && obj !== null,
+        `expected ${utils.inspect(obj)} to be a JSON body (object or array)`,
+        `expected ${utils.inspect(obj)} not to be a JSON body`
+      );
+    } else if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+      // Object arg: deep equality
+      this.assert(
+        utils.eql(obj, args[0]),
+        `expected body to deeply equal ${utils.inspect(args[0])}`,
+        `expected body to not deeply equal ${utils.inspect(args[0])}`
+      );
+    } else if (args.length === 1) {
+      // String path: check nested property exists
+      const result = getNestedValue(obj, String(args[0]));
+      this.assert(
+        result.found,
+        `expected body to have nested property '${args[0]}'`,
+        `expected body to not have nested property '${args[0]}'`
+      );
+    } else {
+      // Path + value: check nested property equals value
+      const result = getNestedValue(obj, String(args[0]));
+      this.assert(
+        result.found && utils.eql(result.value, args[1]),
+        `expected body to have nested property '${args[0]}' equal to ${utils.inspect(args[1])}`,
+        `expected body to not have nested property '${args[0]}' equal to ${utils.inspect(args[1])}`
+      );
+    }
   });
 });
 
@@ -57,6 +220,7 @@ chai.use(function (chai, utils) {
  * endsWith    : ends with
  * between     : between
  * isEmpty     : is empty
+ * isNotEmpty  : is not empty
  * isNull      : is null
  * isUndefined : is undefined
  * isDefined   : is defined
@@ -66,6 +230,7 @@ chai.use(function (chai, utils) {
  * isNumber    : is number
  * isString    : is string
  * isBoolean   : is boolean
+ * isArray     : is array
  */
 const parseAssertionOperator = (str = '') => {
   if (!str || typeof str !== 'string' || !str.length) {
@@ -93,6 +258,7 @@ const parseAssertionOperator = (str = '') => {
     'endsWith',
     'between',
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -101,11 +267,13 @@ const parseAssertionOperator = (str = '') => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   const unaryOperators = [
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -114,7 +282,8 @@ const parseAssertionOperator = (str = '') => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   const [operator, ...rest] = str.trim().split(' ');
@@ -143,6 +312,7 @@ const parseAssertionOperator = (str = '') => {
 const isUnaryOperator = (operator) => {
   const unaryOperators = [
     'isEmpty',
+    'isNotEmpty',
     'isNull',
     'isUndefined',
     'isDefined',
@@ -151,21 +321,51 @@ const isUnaryOperator = (operator) => {
     'isJson',
     'isNumber',
     'isString',
-    'isBoolean'
+    'isBoolean',
+    'isArray'
   ];
 
   return unaryOperators.includes(operator);
 };
 
-const evaluateRhsOperand = (rhsOperand, operator, context) => {
+const evaluateJsTemplateLiteralBasedOnRuntime = (literal, context, runtime) => {
+  if (runtime === 'quickjs') {
+    return executeQuickJsVm({
+      script: literal,
+      context,
+      scriptType: 'template-literal'
+    });
+  }
+
+  return evaluateJsTemplateLiteral(literal, context);
+};
+
+const evaluateJsExpressionBasedOnRuntime = (expr, context, runtime) => {
+  if (runtime === 'quickjs') {
+    return executeQuickJsVm({
+      script: expr,
+      context,
+      scriptType: 'expression'
+    });
+  }
+
+  return evaluateJsExpression(expr, context);
+};
+
+const evaluateRhsOperand = (rhsOperand, operator, context, runtime, onUnresolved) => {
   if (isUnaryOperator(operator)) {
     return;
   }
 
   const interpolationContext = {
+    globalEnvironmentVariables: context.bru.globalEnvironmentVariables,
     collectionVariables: context.bru.collectionVariables,
+    folderVariables: context.bru.folderVariables,
+    requestVariables: context.bru.requestVariables,
+    runtimeVariables: context.bru.runtimeVariables,
     envVariables: context.bru.envVariables,
-    processEnvVars: context.bru.processEnvVars
+    processEnvVars: context.bru.processEnvVars,
+    onUnresolved
   };
 
   // gracefully allow both a,b as well as [a, b]
@@ -176,13 +376,17 @@ const evaluateRhsOperand = (rhsOperand, operator, context) => {
 
     return rhsOperand
       .split(',')
-      .map((v) => evaluateJsTemplateLiteral(interpolateString(v.trim(), interpolationContext), context));
+      .map((v) =>
+        evaluateJsTemplateLiteralBasedOnRuntime(interpolateString(v.trim(), interpolationContext), context, runtime)
+      );
   }
 
   if (operator === 'between') {
     const [lhs, rhs] = rhsOperand
       .split(',')
-      .map((v) => evaluateJsTemplateLiteral(interpolateString(v.trim(), interpolationContext), context));
+      .map((v) =>
+        evaluateJsTemplateLiteralBasedOnRuntime(interpolateString(v.trim(), interpolationContext), context, runtime)
+      );
     return [lhs, rhs];
   }
 
@@ -195,17 +399,42 @@ const evaluateRhsOperand = (rhsOperand, operator, context) => {
     return interpolateString(rhsOperand, interpolationContext);
   }
 
-  return evaluateJsTemplateLiteral(interpolateString(rhsOperand, interpolationContext), context);
+  return evaluateJsTemplateLiteralBasedOnRuntime(interpolateString(rhsOperand, interpolationContext), context, runtime);
 };
 
 class AssertRuntime {
-  runAssertions(assertions, request, response, envVariables, collectionVariables, collectionPath) {
+  constructor(props) {
+    this.runtime = props?.runtime || 'quickjs';
+  }
+
+  runAssertions(assertions, request, response, envVariables, runtimeVariables, processEnvVars) {
+    const globalEnvironmentVariables = request?.globalEnvironmentVariables || {};
+    const oauth2CredentialVariables = request?.oauth2CredentialVariables || {};
+    const collectionVariables = request?.collectionVariables || {};
+    const folderVariables = request?.folderVariables || {};
+    const requestVariables = request?.requestVariables || {};
     const enabledAssertions = _.filter(assertions, (a) => a.enabled);
     if (!enabledAssertions.length) {
       return [];
     }
 
-    const bru = new Bru(envVariables, collectionVariables);
+    const promptVariables = request?.promptVariables || {};
+    const certsAndProxyConfig = request?.certsAndProxyConfig;
+    const onUnresolved = getUnresolvedVariableCollector(request);
+    const bru = new Bru({
+      runtime: this.runtime,
+      envVariables,
+      runtimeVariables,
+      processEnvVars,
+      collectionVariables,
+      folderVariables,
+      requestVariables,
+      globalEnvironmentVariables,
+      promptVariables,
+      certsAndProxyConfig,
+      requestUrl: request?.url,
+      onUnresolved
+    });
     const req = new BrunoRequest(request);
     const res = createResponseParser(response);
 
@@ -216,8 +445,14 @@ class AssertRuntime {
     };
 
     const context = {
-      ...envVariables,
+      ...globalEnvironmentVariables,
       ...collectionVariables,
+      ...envVariables,
+      ...folderVariables,
+      ...requestVariables,
+      ...oauth2CredentialVariables,
+      ...runtimeVariables,
+      ...processEnvVars,
       ...bruContext
     };
 
@@ -230,8 +465,8 @@ class AssertRuntime {
       const { operator, value: rhsOperand } = parseAssertionOperator(rhsExpr);
 
       try {
-        const lhs = evaluateJsExpression(lhsExpr, context);
-        const rhs = evaluateRhsOperand(rhsOperand, operator, context);
+        const lhs = evaluateJsExpressionBasedOnRuntime(lhsExpr, context, this.runtime);
+        const rhs = evaluateRhsOperand(rhsOperand, operator, context, this.runtime, onUnresolved);
 
         switch (operator) {
           case 'eq':
@@ -286,6 +521,9 @@ class AssertRuntime {
           case 'isEmpty':
             expect(lhs).to.be.empty;
             break;
+          case 'isNotEmpty':
+            expect(lhs).to.not.be.empty;
+            break;
           case 'isNull':
             expect(lhs).to.be.null;
             break;
@@ -313,6 +551,9 @@ class AssertRuntime {
           case 'isBoolean':
             expect(lhs).to.be.a('boolean');
             break;
+          case 'isArray':
+            expect(lhs).to.be.a('array');
+            break;
           default:
             expect(lhs).to.equal(rhs);
             break;
@@ -338,6 +579,8 @@ class AssertRuntime {
         });
       }
     }
+
+    request.assertionResults = assertionResults;
 
     return assertionResults;
   }

@@ -29,7 +29,7 @@ const isFile = (filepath) => {
 
 const isDirectory = (dirPath) => {
   try {
-    return fs.existsSync(dirPath) && fs.lstatSync(dirPath).isDirectory();
+    return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
   } catch (_) {
     return false;
   }
@@ -118,6 +118,51 @@ const getSubDirectories = (dir) => {
   }
 };
 
+/**
+ * Checks if a file is larger than a given threshold.
+ * @param {string} filePath - The path to the file.
+ * @param {number} threshold - The threshold in bytes. Default is 10MB.
+ * @returns {boolean} True if the file is larger than the threshold, false otherwise.
+ */
+const isLargeFile = (filePath, threshold = 10 * 1024 * 1024) => {
+  if (!isFile(filePath)) {
+    throw new Error(`File ${filePath} is not a file`);
+  }
+
+  const size = fs.statSync(filePath).size;
+
+  return size > threshold;
+};
+
+/**
+ * Resolves a path to the exact casing and path stored on disk
+ *
+ * @param {string} filePath - The path to resolve
+ * @returns {string} - The resolved path
+ */
+const canonicalPath = (filePath) => {
+  try {
+    return fs.realpathSync.native(filePath);
+  } catch (_) {
+    return path.resolve(filePath);
+  }
+};
+
+// A "safe" file name is a bare basename: no path separators and no traversal.
+// Use it to guard untrusted names (e.g. from shared collection config) before
+// joining them into a filesystem path, so they can't escape the intended directory.
+const isSafeFileName = (name) => {
+  return (
+    typeof name === 'string'
+    && name.length > 0
+    && name === path.basename(name)
+    && !name.includes('/')
+    && !name.includes('\\')
+    && name !== '.'
+    && name !== '..'
+  );
+};
+
 module.exports = {
   exists,
   isSymbolicLink,
@@ -131,5 +176,8 @@ module.exports = {
   searchForFiles,
   searchForBruFiles,
   stripExtension,
-  getSubDirectories
+  getSubDirectories,
+  isLargeFile,
+  isSafeFileName,
+  canonicalPath
 };

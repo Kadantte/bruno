@@ -3,14 +3,32 @@
 
 ### Bruno - 探索和測試 API 的開源 IDE 工具
 
-[![GitHub version](https://badge.fury.io/gh/usebruno%2Fbruno.svg)](https://badge.fury.io/gh/usebruno%bruno)
-[![CI](https://github.com/usebruno/bruno/actions/workflows/unit-tests.yml/badge.svg?branch=main)](https://github.com/usebruno/bruno/workflows/unit-tests.yml)
+[![GitHub version](https://badge.fury.io/gh/usebruno%2Fbruno.svg)](https://badge.fury.io/gh/usebruno%2Fbruno)
+[![CI](https://github.com/usebruno/bruno/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/usebruno/bruno/actions/workflows/tests.yml)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/usebruno/bruno)](https://github.com/usebruno/bruno/pulse)
 [![X](https://img.shields.io/twitter/follow/use_bruno?style=social&logo=x)](https://twitter.com/use_bruno)
 [![网站](https://img.shields.io/badge/Website-Visit-blue)](https://www.usebruno.com)
 [![下载](https://img.shields.io/badge/Download-Latest-brightgreen)](https://www.usebruno.com/downloads)
 
-[English](../../readme.md) | [Українська](./readme_ua.md) | [Русский](./readme_ru.md) | [Türkçe](./readme_tr.md) | [Deutsch](./readme_de.md) | [Français](./readme_fr.md) | [Português (BR)](./readme_pt_br.md) | [한국어](./readme_kr.md) | [বাংলা](./readme_bn.md) | [Español](./readme_es.md) | [Italiano](./readme_it.md) | [Română](./readme_ro.md) | [Polski](./readme_pl.md) | [简体中文](./readme_cn.md) | **正體中文**
+[English](../../readme.md)
+| [Українська](./readme_ua.md)
+| [Русский](./readme_ru.md)
+| [Türkçe](./readme_tr.md)
+| [Deutsch](./readme_de.md)
+| [Français](./readme_fr.md)
+| [Português (BR)](./readme_pt_br.md)
+| [한국어](./readme_kr.md)
+| [বাংলা](./readme_bn.md)
+| [Español](./readme_es.md)
+| [Italiano](./readme_it.md)
+| [Română](./readme_ro.md)
+| [Polski](./readme_pl.md)
+| [简体中文](./readme_cn.md)
+| **正體中文**
+| [العربية](./readme_ar.md)
+| [日本語](./readme_ja.md)
+| [ქართული](./readme_ka.md)
+| [हिन्दी](./readme_hi.md)
 
 Bruno 是一個全新且有創新性的 API 用戶端，目的在徹底改變以 Postman 和其他類似工具的現況。
 
@@ -46,12 +64,14 @@ snap install bruno
 
 # 在 Linux 上使用 Apt 安裝
 sudo mkdir -p /etc/apt/keyrings
-sudo gpg --no-default-keyring --keyring /etc/apt/keyrings/bruno.gpg --keyserver keyserver.ubuntu.com --recv-keys 9FA6017ECABE0266
-
-echo "deb [signed-by=/etc/apt/keyrings/bruno.gpg] http://debian.usebruno.com/ bruno stable" | sudo tee /etc/apt/sources.list.d/bruno.list
-
-sudo apt update
-sudo apt install bruno
+sudo apt update && sudo apt install gpg curl
+curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9FA6017ECABE0266" \
+  | gpg --dearmor \
+  | sudo tee /etc/apt/keyrings/bruno.gpg > /dev/null
+sudo chmod 644 /etc/apt/keyrings/bruno.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bruno.gpg] http://debian.usebruno.com/ bruno stable" \
+  | sudo tee /etc/apt/sources.list.d/bruno.list
+sudo apt update && sudo apt install bruno
 ```
 
 ### 跨多個平台運行 🖥️

@@ -6,10 +6,11 @@
  */
 import escapeHTML from 'escape-html';
 import MD from 'markdown-it';
+import { openLinksExternally } from 'utils/markdown/openLinksExternally';
 
 import { GraphQLNonNull, GraphQLList } from 'graphql';
 
-const md = new MD();
+const md = new MD().use(openLinksExternally);
 
 /**
  * Render a custom UI for CodeMirror's hint which includes additional info
@@ -59,10 +60,10 @@ export default function onHasCompletion(_cm, data, onHintInformationRender) {
     const description = ctx.description ? md.render(ctx.description) : 'Self descriptive.';
     const type = ctx.type ? '<span className="infoType">' + renderType(ctx.type) + '</span>' : '';
 
-    information.innerHTML =
-      '<div className="content">' +
-      (description.slice(0, 3) === '<p>' ? '<p>' + type + description.slice(3) : type + description) +
-      '</div>';
+    information.innerHTML
+      = '<div className="content">'
+        + (description.slice(0, 3) === '<p>' ? '<p>' + type + description.slice(3) : type + description)
+        + '</div>';
 
     if (ctx && deprecation && ctx.deprecationReason) {
       const reason = ctx.deprecationReason ? md.render(ctx.deprecationReason) : '';

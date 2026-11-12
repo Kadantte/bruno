@@ -1,20 +1,23 @@
 import React from 'react';
+import SensitiveFieldWarning from 'components/SensitiveFieldWarning';
 import get from 'lodash/get';
 import { useTheme } from 'providers/Theme';
 import { useDispatch } from 'react-redux';
 import SingleLineEditor from 'components/SingleLineEditor';
-import { updateAuth } from 'providers/ReduxStore/slices/collections';
-import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
+import { sendRequest } from 'providers/ReduxStore/slices/collections/actions';
 import StyledWrapper from './StyledWrapper';
 
-const BasicAuth = ({ item, collection }) => {
+const BasicAuth = ({ item, collection, updateAuth, request, save, readOnly }) => {
   const dispatch = useDispatch();
   const { storedTheme } = useTheme();
 
-  const basicAuth = item.draft ? get(item, 'draft.request.auth.basic', {}) : get(item, 'request.auth.basic', {});
+  const basicAuth = get(request, 'auth.basic', {});
 
   const handleRun = () => dispatch(sendRequest(item, collection.uid));
-  const handleSave = () => dispatch(saveRequest(item.uid, collection.uid));
+
+  const handleSave = () => {
+    save();
+  };
 
   const handleUsernameChange = (username) => {
     dispatch(
@@ -23,8 +26,8 @@ const BasicAuth = ({ item, collection }) => {
         collectionUid: collection.uid,
         itemUid: item.uid,
         content: {
-          username: username,
-          password: basicAuth.password
+          username: username || '',
+          password: basicAuth.password || ''
         }
       })
     );
@@ -37,17 +40,17 @@ const BasicAuth = ({ item, collection }) => {
         collectionUid: collection.uid,
         itemUid: item.uid,
         content: {
-          username: basicAuth.username,
-          password: password
+          username: basicAuth.username || '',
+          password: password || ''
         }
       })
     );
   };
 
   return (
-    <StyledWrapper className="mt-2 w-full">
-      <label className="block font-medium mb-2">Username</label>
-      <div className="single-line-editor-wrapper mb-2">
+    <StyledWrapper className="w-full">
+      <label className="block mb-1">Username</label>
+      <div className="single-line-editor-wrapper mb-3">
         <SingleLineEditor
           value={basicAuth.username || ''}
           theme={storedTheme}
@@ -55,11 +58,14 @@ const BasicAuth = ({ item, collection }) => {
           onChange={(val) => handleUsernameChange(val)}
           onRun={handleRun}
           collection={collection}
+          item={item}
+          readOnly={readOnly}
+          isCompact
         />
       </div>
 
-      <label className="block font-medium mb-2">Password</label>
-      <div className="single-line-editor-wrapper">
+      <label className="block mb-1">Password</label>
+      <div className="single-line-editor-wrapper flex items-center">
         <SingleLineEditor
           value={basicAuth.password || ''}
           theme={storedTheme}
@@ -67,7 +73,12 @@ const BasicAuth = ({ item, collection }) => {
           onChange={(val) => handlePasswordChange(val)}
           onRun={handleRun}
           collection={collection}
+          item={item}
+          isSecret={true}
+          readOnly={readOnly}
+          isCompact
         />
+        <SensitiveFieldWarning fieldName="basic-password" secretName="password" value={basicAuth?.password} collection={collection} item={item} fieldKey="password" onReplaceValue={handlePasswordChange} />
       </div>
     </StyledWrapper>
   );

@@ -3,14 +3,32 @@
 
 ### Bruno - API'leri keşfetmek ve test etmek için açık kaynaklı IDE.
 
-[![GitHub sürümü](https://badge.fury.io/gh/usebruno%2Fbruno.svg)](https://badge.fury.io/gh/usebruno%bruno)
-[![CI](https://github.com/usebruno/bruno/actions/workflows/unit-tests.yml/badge.svg?branch=main)](https://github.com/usebruno/bruno/workflows/unit-tests.yml)
+[![GitHub sürümü](https://badge.fury.io/gh/usebruno%2Fbruno.svg)](https://badge.fury.io/gh/usebruno%2Fbruno)
+[![CI](https://github.com/usebruno/bruno/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/usebruno/bruno/actions/workflows/tests.yml)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/usebruno/bruno)](https://github.com/usebruno/bruno/pulse)
 [![X](https://img.shields.io/twitter/follow/use_bruno?style=social&logo=x)](https://twitter.com/use_bruno)
 [![Web Sitesi](https://img.shields.io/badge/Website-Visit-blue)](https://www.usebruno.com)
 [![İndir](https://img.shields.io/badge/Download-Latest-brightgreen)](https://www.usebruno.com/downloads)
 
-[English](../../readme.md) | [Українська](docs/readme/readme_ua.md) | [Русский](docs/readme/readme_ru.md) | **Türkçe** | [Deutsch](docs/readme/readme_de.md) | [Français](docs/readme/readme_fr.md) | [Português (BR)](docs/readme/readme_pt_br.md) | [한국어](docs/readme/readme_kr.md) | [বাংলা](docs/readme/readme_bn.md) | [Español](docs/readme/readme_es.md) | [Italiano](docs/readme/readme_it.md) | [Română](docs/readme/readme_ro.md) | [Polski](docs/readme/readme_pl.md) | [简体中文](docs/readme/readme_cn.md)
+[English](../../readme.md)
+| [Українська](./readme_ua.md)
+| [Русский](./readme_ru.md)
+| **Türkçe**
+| [Deutsch](./readme_de.md)
+| [Français](./readme_fr.md)
+| [Português (BR)](./readme_pt_br.md)
+| [한국어](./readme_kr.md)
+| [বাংলা](./readme_bn.md)
+| [Español](./readme_es.md)
+| [Italiano](./readme_it.md)
+| [Română](./readme_ro.md)
+| [Polski](./readme_pl.md)
+| [简体中文](./readme_cn.md)
+| [正體中文](./readme_zhtw.md)
+| [العربية](./readme_ar.md)
+| [日本語](./readme_ja.md)
+| [ქართული](./readme_ka.md)
+| [हिन्दी](./readme_hi.md)
 
 Bruno, Postman ve benzeri araçlar tarafından temsil edilen statükoda devrim yaratmayı amaçlayan yeni ve yenilikçi bir API istemcisidir.
 
@@ -46,12 +64,14 @@ snap install bruno
 
 # Apt aracılığıyla Linux'ta
 sudo mkdir -p /etc/apt/keyrings
-sudo gpg --no-default-keyring --keyring /etc/apt/keyrings/bruno.gpg --keyserver keyserver.ubuntu.com --recv-keys 9FA6017ECABE0266
-
-echo "deb [signed-by=/etc/apt/keyrings/bruno.gpg] http://debian.usebruno.com/ bruno stable" | sudo tee /etc/apt/sources.list.d/bruno.list
-
-sudo apt update
-sudo apt install bruno
+sudo apt update && sudo apt install gpg curl
+curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9FA6017ECABE0266" \
+  | gpg --dearmor \
+  | sudo tee /etc/apt/keyrings/bruno.gpg > /dev/null
+sudo chmod 644 /etc/apt/keyrings/bruno.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bruno.gpg] http://debian.usebruno.com/ bruno stable" \
+  | sudo tee /etc/apt/sources.list.d/bruno.list
+sudo apt update && sudo apt install bruno
 ```
 
 ### Birden fazla platformda çalıştırın 🖥️
@@ -91,11 +111,11 @@ Bruno işinizde ve ekiplerinizde size yardımcı olduysa, lütfen [github tartı
 
 ### Yeni Paket Yöneticilerine Yayınlama
 
-Daha fazla bilgi için lütfen [buraya](publishing.md) bakın.
+Daha fazla bilgi için lütfen [buraya](../publishing/publishing_tr.md) bakın.
 
 ### Katkıda Bulunun 👩‍💻🧑‍💻
 
-Bruno'yu geliştirmek istemenize sevindim. Lütfen [katkıda bulunma kılavuzuna](contributing.md) göz atın
+Bruno'yu geliştirmek istemenize sevindim. Lütfen [katkıda bulunma kılavuzuna](../contributing/contributing_tr.md) göz atın
 
 Kod yoluyla katkıda bulunamasanız bile, lütfen kullanım durumunuzu çözmek için uygulanması gereken hataları ve özellik isteklerini bildirmekten çekinmeyin.
 
@@ -126,4 +146,4 @@ Logo [OpenMoji](https://openmoji.org/library/emoji-1F436/) adresinden alınmış
 
 ### Lisans 📄
 
-[MIT](license.md)
+[MIT](../../license.md)

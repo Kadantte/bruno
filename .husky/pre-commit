@@ -1,4 +1,6 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+npx nano-staged
 
-npx pretty-quick --staged
+if git diff --cached --name-only | grep -q '^packages/bruno-sqlite/migrations/'; then
+  npm run schema --workspace=packages/bruno-sqlite --silent
+  git add packages/bruno-sqlite/SCHEMA.md
+fi
